@@ -3,6 +3,7 @@
     "description": "A Laravel package that converts PDF files to HTML format with ease, supporting image extraction and CDN-hosted PDFs.",
     "type": "library",
     "license": "MIT",
+    "version": "1.0.5",
     "keywords": [
         "laravel",
         "pdf",
@@ -25,7 +26,7 @@
     "authors": [
         {
             "name": "Moinul",
-            "email": "moinul@example.com"
+            "email": "engrminul@gmail.com"
         }
     ],
     "require": {
