@@ -3,6 +3,7 @@
     "description": "A Laravel package to convert PDF files to HTML format",
     "type": "library",
     "license": "MIT",
+    "version": "1.0.1",
     "autoload": {
         "psr-4": {
             "Moinul\\LaravelPdfToHtml\\": "src/"
