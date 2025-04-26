@@ -151,4 +151,46 @@ class PdfToHtmlController extends Controller
             ], Response::HTTP_BAD_REQUEST);
         }
     }
+
+    /**
+     * View converted PDF
+     *
+     * @param string|null $filename
+     * @return Response
+     */
+    public function view(?string $filename = null)
+    {
+        try {
+            // If no filename provided, use a default PDF
+            if (!$filename) {
+                $pdfPath = public_path('OpenAI_Guide__1744995287.pdf');
+            } else {
+                $pdfPath = public_path($filename);
+            }
+
+            if (!file_exists($pdfPath)) {
+                throw new \Exception("PDF file not found");
+            }
+
+            $outputPath = public_path('storage/pdf-output');
+            
+            // Create output directory if it doesn't exist
+            if (!file_exists($outputPath)) {
+                mkdir($outputPath, 0777, true);
+            }
+
+            // Convert PDF to HTML
+            $html = PdfToHtml::convert($pdfPath);
+
+            // Return the view
+            return response($html)
+                ->header('Content-Type', 'text/html');
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], Response::HTTP_BAD_REQUEST);
+        }
+    }
 } 

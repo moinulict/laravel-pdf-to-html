@@ -3,57 +3,59 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | CSS Classes and Styles
+    | PDF to HTML Conversion Settings
     |--------------------------------------------------------------------------
     |
-    | Configure the CSS classes and styles for responsive HTML output
+    | These settings control how PDFs are converted to HTML format.
     |
     */
-    'css_classes' => [
-        'container' => 'pdf-content-container',
-        'content' => 'pdf-content',
-        'page' => 'pdf-page',
-        'paragraph' => 'pdf-paragraph',
-        'heading' => 'pdf-heading',
-        'image' => 'pdf-image',
+
+    // Image extraction settings
+    'images' => [
+        'enabled' => true,
+        'quality' => 90,
+        'dpi' => 300,
+        'format' => 'png',
+        'storage_path' => 'pdf-images',
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Responsive Breakpoints
-    |--------------------------------------------------------------------------
-    |
-    | Define the breakpoints for responsive design (in pixels)
-    |
-    */
-    'breakpoints' => [
-        'mobile' => 480,
-        'tablet' => 768,
-        'desktop' => 1024,
+    // Style settings
+    'styles' => [
+        'preserve_fonts' => true,
+        'preserve_colors' => true,
+        'preserve_positioning' => true,
+        'default_font' => 'Arial',
+        'min_heading_size' => 14,
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Output Format
-    |--------------------------------------------------------------------------
-    |
-    | Configure the HTML output format settings
-    |
-    */
+    // Page settings
+    'page' => [
+        'max_width' => 1200,
+        'margin' => 20,
+        'background' => '#ffffff',
+        'shadow' => true,
+    ],
+
+    // Output settings
     'output' => [
-        'include_styles' => true, // Whether to include default CSS styles
-        'preserve_whitespace' => true,
-        'split_paragraphs' => true,
-        'responsive_images' => true,
+        'responsive' => true,
+        'print_friendly' => true,
+        'include_styles' => true,
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Default Styles
-    |--------------------------------------------------------------------------
-    |
-    | Default CSS styles for responsive design
-    |
-    */
-    'default_styles' => true, // Set to false to disable default styles
+    // CSS classes
+    'css_classes' => [
+        'container' => 'pdf-container',
+        'page' => 'pdf-page',
+        'content' => 'pdf-content',
+        'text' => 'pdf-text',
+        'image' => 'pdf-image',
+        'heading' => 'pdf-heading',
+    ],
+
+    // Responsive breakpoints
+    'breakpoints' => [
+        'mobile' => 768,
+        'tablet' => 1024,
+    ],
 ]; 

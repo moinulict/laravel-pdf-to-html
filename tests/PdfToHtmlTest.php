@@ -3,6 +3,7 @@
 namespace Moinul\LaravelPdfToHtml\Tests;
 
 use Orchestra\Testbench\TestCase;
+use Moinul\LaravelPdfToHtml\Services\PdfToHtmlConverter;
 use Moinul\LaravelPdfToHtml\PdfToHtmlServiceProvider;
 use Moinul\LaravelPdfToHtml\Facades\PdfToHtml;
 use InvalidArgumentException;
@@ -38,10 +39,89 @@ class PdfToHtmlTest extends TestCase
     }
 
     /** @test */
-    public function it_throws_exception_for_non_existent_file()
+    public function it_can_convert_pdf_to_html()
     {
-        $this->expectException(InvalidArgumentException::class);
-        PdfToHtml::convert('non-existent.pdf');
+        $converter = new PdfToHtmlConverter();
+        
+        // Create a simple test PDF
+        $pdf = new \TCPDF();
+        $pdf->AddPage();
+        $pdf->SetFont('helvetica', 'B', 20);
+        $pdf->Cell(0, 10, 'Test Heading', 0, 1, 'C');
+        $pdf->SetFont('helvetica', '', 12);
+        $pdf->Cell(0, 10, 'This is a test paragraph.', 0, 1, 'L');
+        
+        // Save test PDF
+        $pdfPath = storage_path('app/test.pdf');
+        $pdf->Output($pdfPath, 'F');
+        
+        // Convert to HTML
+        $html = $converter->convert($pdfPath);
+        
+        // Assert HTML contains expected elements
+        $this->assertStringContainsString('Test Heading', $html);
+        $this->assertStringContainsString('This is a test paragraph', $html);
+        $this->assertStringContainsString('pdf-heading', $html);
+        $this->assertStringContainsString('pdf-text', $html);
+        
+        // Clean up
+        unlink($pdfPath);
+    }
+
+    /** @test */
+    public function it_throws_exception_for_nonexistent_pdf()
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        
+        $converter = new PdfToHtmlConverter();
+        $converter->convert('nonexistent.pdf');
+    }
+
+    /** @test */
+    public function it_preserves_styles_and_images()
+    {
+        $converter = new PdfToHtmlConverter();
+        
+        // Create a PDF with styling and images
+        $pdf = new \TCPDF();
+        $pdf->AddPage();
+        
+        // Add styled text
+        $pdf->SetFont('helvetica', 'B', 24);
+        $pdf->SetTextColor(255, 0, 0);
+        $pdf->Cell(0, 10, 'Red Heading', 0, 1, 'C');
+        
+        $pdf->SetFont('helvetica', '', 14);
+        $pdf->SetTextColor(0, 0, 255);
+        $pdf->Cell(0, 10, 'Blue Text', 0, 1, 'L');
+        
+        // Add an image
+        $imagePath = __DIR__ . '/test-image.png';
+        if (file_exists($imagePath)) {
+            $pdf->Image($imagePath, 10, 50, 50);
+        }
+        
+        // Save test PDF
+        $pdfPath = storage_path('app/test-styled.pdf');
+        $pdf->Output($pdfPath, 'F');
+        
+        // Convert to HTML
+        $html = $converter->convert($pdfPath);
+        
+        // Assert styling is preserved
+        $this->assertStringContainsString('color: #ff0000', strtolower($html));
+        $this->assertStringContainsString('color: #0000ff', strtolower($html));
+        $this->assertStringContainsString('font-size: 24px', $html);
+        $this->assertStringContainsString('font-size: 14px', $html);
+        
+        // Assert image handling
+        if (file_exists($imagePath)) {
+            $this->assertStringContainsString('pdf-image', $html);
+            $this->assertStringContainsString('<img', $html);
+        }
+        
+        // Clean up
+        unlink($pdfPath);
     }
 
     /** @test */
