@@ -28,14 +28,34 @@ class PdfToHtmlConverter
         $this->imageStoragePath = storage_path('app/public/pdf-images');
         $this->mpdf = null;
         
-        // Ensure storage is linked
+        // Create storage directories if they don't exist
+        if (!is_dir(storage_path('app/public'))) {
+            mkdir(storage_path('app/public'), 0777, true);
+        }
+        
+        // Create symbolic link if it doesn't exist
         if (!file_exists(public_path('storage'))) {
-            app('command.storage.link')->handle();
+            $this->createStorageLink();
         }
         
         // Ensure image storage directory exists
-        if (!file_exists($this->imageStoragePath)) {
+        if (!is_dir($this->imageStoragePath)) {
             mkdir($this->imageStoragePath, 0777, true);
+        }
+    }
+
+    /**
+     * Create storage symbolic link
+     */
+    private function createStorageLink(): void
+    {
+        $target = storage_path('app/public');
+        $link = public_path('storage');
+
+        if (PHP_OS_FAMILY === 'Windows') {
+            exec('mklink /D "' . str_replace('/', '\\', $link) . '" "' . str_replace('/', '\\', $target) . '"');
+        } else {
+            symlink($target, $link);
         }
     }
 
