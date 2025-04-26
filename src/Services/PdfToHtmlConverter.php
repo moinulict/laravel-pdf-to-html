@@ -83,25 +83,23 @@ class PdfToHtmlConverter
             'page_height' => 297 // A4 height in mm
         ], $options);
 
-        // Initialize mPDF for better style handling
-        $this->mpdf = new Mpdf([
-            'mode' => 'utf-8',
-            'format' => 'A4',
-            'dpi' => $options['dpi']
-        ]);
-
-        $pdf = $this->parser->parseFile($pdfPath);
-        $pages = $pdf->getPages();
-        
-        $html = $this->generateHeader();
-        
-        foreach ($pages as $pageNumber => $page) {
-            $html .= $this->convertPageToHtml($page, $pageNumber + 1, $options);
+        try {
+            $pdf = $this->parser->parseFile($pdfPath);
+            $pages = $pdf->getPages();
+            
+            $html = $this->generateHeader();
+            
+            foreach ($pages as $pageNumber => $page) {
+                $html .= $this->convertPageToHtml($page, $pageNumber + 1, $options);
+            }
+            
+            $html .= $this->generateFooter();
+            
+            return new HtmlString($html);
+        } catch (\Exception $e) {
+            Log::error('PDF conversion error: ' . $e->getMessage());
+            throw new InvalidArgumentException('Failed to convert PDF: ' . $e->getMessage());
         }
-        
-        $html .= $this->generateFooter();
-        
-        return new HtmlString($html);
     }
 
     /**
@@ -117,11 +115,10 @@ class PdfToHtmlConverter
             <meta charset="UTF-8">
             <style type="text/css">
                 .pdf-container { width: 100%; max-width: 1200px; margin: 0 auto; }
-                .pdf-page { position: relative; margin-bottom: 20px; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+                .pdf-page { position: relative; margin-bottom: 20px; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); padding: 20px; }
                 .pdf-content { position: relative; }
-                .pdf-text { position: relative; z-index: 1; }
+                .pdf-text { margin: 10px 0; line-height: 1.6; }
                 .pdf-image { max-width: 100%; height: auto; display: block; margin: 10px 0; }
-                .pdf-heading { font-weight: bold; margin: 1em 0; }
                 @media print {
                     .pdf-page { box-shadow: none; margin: 0; page-break-after: always; }
                 }
@@ -151,31 +148,43 @@ class PdfToHtmlConverter
      */
     private function convertPageToHtml(Page $page, int $pageNumber, array $options): string
     {
-        $pageDetails = $page->getDetails();
-        $pageWidth = $pageDetails['MediaBox'][2] ?? 595; // Default A4 width in points
-        $pageHeight = $pageDetails['MediaBox'][3] ?? 842; // Default A4 height in points
-        
-        $html = sprintf('<div class="pdf-page" style="width: %spx; min-height: %spx;" data-page="%d">', 
-            $pageWidth * 96/72, // Convert points to pixels
-            $pageHeight * 96/72,
-            $pageNumber
-        );
+        try {
+            $pageDetails = $page->getDetails();
+            $pageWidth = $pageDetails['MediaBox'][2] ?? 595; // Default A4 width in points
+            $pageHeight = $pageDetails['MediaBox'][3] ?? 842; // Default A4 height in points
+            
+            $html = sprintf('<div class="pdf-page" style="width: %spx; min-height: %spx;" data-page="%d">', 
+                $pageWidth * 96/72, // Convert points to pixels
+                $pageHeight * 96/72,
+                $pageNumber
+            );
 
-        // Process text with styling
-        $html .= '<div class="pdf-content">';
-        $text = $page->getText();
-        
-        // Split text into paragraphs
-        $paragraphs = preg_split('/\n\s*\n/', $text);
-        foreach ($paragraphs as $paragraph) {
-            if (trim($paragraph)) {
-                $html .= sprintf('<p class="pdf-text">%s</p>', htmlspecialchars($paragraph));
+            $html .= '<div class="pdf-content">';
+            
+            // Get text content
+            $text = $page->getText();
+            
+            // Process text content
+            if (!empty($text)) {
+                // Split into paragraphs and preserve line breaks
+                $paragraphs = preg_split('/\n\s*\n/', $text);
+                foreach ($paragraphs as $paragraph) {
+                    $paragraph = trim($paragraph);
+                    if (!empty($paragraph)) {
+                        // Convert single newlines to <br> tags
+                        $paragraph = nl2br(htmlspecialchars($paragraph));
+                        $html .= sprintf('<div class="pdf-text">%s</div>', $paragraph);
+                    }
+                }
             }
+            
+            $html .= '</div></div>';
+            
+            return $html;
+        } catch (\Exception $e) {
+            Log::error('Page conversion error: ' . $e->getMessage());
+            return sprintf('<div class="pdf-page"><div class="pdf-content">Failed to convert page %d</div></div>', $pageNumber);
         }
-        
-        $html .= '</div></div>';
-
-        return $html;
     }
 
     /**
