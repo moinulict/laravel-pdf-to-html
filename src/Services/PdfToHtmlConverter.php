@@ -161,8 +161,24 @@ class PdfToHtmlConverter
 
             $html .= '<div class="pdf-content">';
             
-            // Get text content
-            $text = $page->getText();
+            // Get text content with proper handling of Header objects
+            try {
+                $text = '';
+                $textElements = $page->getTextArray();
+                foreach ($textElements as $element) {
+                    if (is_string($element)) {
+                        $text .= $element . ' ';
+                    } elseif (method_exists($element, '__toString')) {
+                        $text .= $element->__toString() . ' ';
+                    } elseif (is_object($element) && method_exists($element, 'getText')) {
+                        $text .= $element->getText() . ' ';
+                    }
+                }
+                $text = trim($text);
+            } catch (\Exception $e) {
+                $text = '';
+                Log::warning('Error extracting text from page ' . $pageNumber . ': ' . $e->getMessage());
+            }
             
             // Process text content
             if (!empty($text)) {
