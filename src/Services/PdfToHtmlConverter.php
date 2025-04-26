@@ -79,14 +79,14 @@ class PdfToHtmlConverter
             'image_quality' => 90,
             'preserve_styles' => true,
             'dpi' => 300,
-            'page_width' => 0,
-            'page_height' => 0
+            'page_width' => 210, // A4 width in mm
+            'page_height' => 297 // A4 height in mm
         ], $options);
 
         // Initialize mPDF for better style handling
         $this->mpdf = new Mpdf([
             'mode' => 'utf-8',
-            'format' => [$options['page_width'], $options['page_height']],
+            'format' => 'A4',
             'dpi' => $options['dpi']
         ]);
 
