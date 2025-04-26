@@ -2,9 +2,8 @@
 
 namespace Moinul\LaravelPdfToHtml\Services;
 
-use InvalidArgumentException;
 use Illuminate\Support\HtmlString;
-use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 
 class PdfToHtmlConverter
 {
@@ -12,24 +11,24 @@ class PdfToHtmlConverter
      * Convert PDF file to HTML
      *
      * @param string $pdfPath Path to the PDF file
-     * @param array $options Conversion options
      * @return HtmlString
      * @throws InvalidArgumentException
      */
-    public function convert(string $pdfPath, array $options = []): HtmlString
+    public function convert(string $pdfPath): HtmlString
     {
         if (!file_exists($pdfPath)) {
             throw new InvalidArgumentException("PDF file not found at path: {$pdfPath}");
         }
 
-        // Create output directory if it doesn't exist
         $outputPath = storage_path('app/public/pdf-output');
+        
+        // Create output directory if it doesn't exist
         if (!file_exists($outputPath)) {
             mkdir($outputPath, 0777, true);
         }
 
         try {
-            // Convert PDF to HTML using pdftohtml command
+            // Convert PDF to HTML preserving exact styling but without backgrounds
             $command = sprintf(
                 'pdftohtml -noframes -c -i %s %s/output.html 2>&1',
                 escapeshellarg($pdfPath),
@@ -50,6 +49,11 @@ class PdfToHtmlConverter
             
             $html = file_get_contents($htmlPath);
             
+            // Remove any background images from the HTML
+            $html = preg_replace('/background-image:[^;]+;/', '', $html);
+            $html = preg_replace('/background:[^;]+;/', 'background: none !important;', $html);
+            $html = preg_replace('/<img[^>]+background[^>]+>/', '', $html);
+            
             // Fix image paths in the HTML
             $html = preg_replace_callback('/<img[^>]+src=["\']([^"\']+)["\']/', function($matches) {
                 $imagePath = $matches[1];
@@ -57,9 +61,14 @@ class PdfToHtmlConverter
                 return str_replace($matches[1], url('storage/pdf-output/' . basename($imagePath)), $matches[0]);
             }, $html);
             
-            // Add basic responsive styling
+            // Extract and enhance the original CSS while preserving positioning
             if (preg_match('/<style.*?>(.*?)<\/style>/s', $html, $matches)) {
                 $css = $matches[1];
+                
+                // Remove any background-related CSS
+                $css = preg_replace('/(background[^:]*:[^;]+;)/', '', $css);
+                
+                // Add responsive and print-friendly styles
                 $css .= "
                     body { margin: 0; padding: 20px; }
                     #page-container { max-width: 1200px; margin: 0 auto; }
@@ -80,30 +89,13 @@ class PdfToHtmlConverter
                         }
                     }
                 ";
+                
+                // Replace the original CSS
                 $html = str_replace($matches[0], "<style>{$css}</style>", $html);
             }
 
-            // Wrap content in a container
-            $html = "<!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset='utf-8'>
-                <meta name='viewport' content='width=device-width, initial-scale=1'>
-                <title>PDF to HTML Conversion</title>
-                <style>
-                    {$css}
-                </style>
-            </head>
-            <body>
-                <div id='page-container'>
-                    {$html}
-                </div>
-            </body>
-            </html>";
-            
             return new HtmlString($html);
         } catch (\Exception $e) {
-            Log::error('PDF conversion error: ' . $e->getMessage());
             throw new InvalidArgumentException('Failed to convert PDF: ' . $e->getMessage());
         }
     }

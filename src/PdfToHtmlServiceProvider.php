@@ -23,9 +23,9 @@ class PdfToHtmlServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Create storage directory if it doesn't exist
-        $storagePath = storage_path('app/public/pdf-output');
-        if (!is_dir($storagePath)) {
-            mkdir($storagePath, 0777, true);
+        $outputPath = storage_path('app/public/pdf-output');
+        if (!is_dir($outputPath)) {
+            mkdir($outputPath, 0777, true);
         }
 
         // Create storage symlink if it doesn't exist
