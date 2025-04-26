@@ -1,15 +1,8 @@
 {
     "name": "moinul/laravel-pdf-to-html",
-    "description": "A Laravel package to convert PDF files to HTML with preserved formatting and styling using poppler-utils",
+    "description": "A Laravel package to convert PDF files to HTML using poppler-utils",
     "type": "library",
     "license": "MIT",
-    "keywords": [
-        "laravel",
-        "pdf",
-        "html",
-        "converter",
-        "poppler-utils"
-    ],
     "authors": [
         {
             "name": "Moinul Islam",
@@ -19,9 +12,6 @@
     "require": {
         "php": "^8.2",
         "illuminate/support": "^7.0|^8.0|^9.0|^10.0|^11.0"
-    },
-    "require-dev": {
-        "phpunit/phpunit": "^11.0.1"
     },
     "autoload": {
         "psr-4": {
@@ -34,6 +24,5 @@
                 "Moinul\\LaravelPdfToHtml\\PdfToHtmlServiceProvider"
             ]
         }
-    },
-    "minimum-stability": "stable"
+    }
 }

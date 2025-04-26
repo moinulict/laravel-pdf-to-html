@@ -12,9 +12,7 @@ class PdfToHtmlServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(PdfToHtmlConverter::class, function ($app) {
-            return new PdfToHtmlConverter();
-        });
+        $this->app->singleton(PdfToHtmlConverter::class);
     }
 
     /**
