@@ -3,22 +3,35 @@
 namespace Moinul\LaravelPdfToHtml\Services;
 
 use Smalot\PdfParser\Parser;
+use Smalot\PdfParser\Page;
+use Smalot\PdfParser\Element;
+use Smalot\PdfParser\Element\ElementXRef;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Imagick;
+use TCPDF;
+use Mpdf\Mpdf;
 
 class PdfToHtmlConverter
 {
     private Parser $parser;
     private array $config;
     private string $imageStoragePath;
+    private ?Mpdf $mpdf;
 
     public function __construct()
     {
         $this->parser = new Parser();
         $this->config = config('pdf-to-html');
         $this->imageStoragePath = storage_path('app/public/pdf-images');
+        $this->mpdf = null;
+        
+        // Ensure storage is linked
+        if (!file_exists(public_path('storage'))) {
+            app('command.storage.link')->handle();
+        }
         
         // Ensure image storage directory exists
         if (!file_exists($this->imageStoragePath)) {
@@ -43,252 +56,321 @@ class PdfToHtmlConverter
         // Merge options with defaults
         $options = array_merge([
             'extract_images' => true,
-            'image_quality' => 80,
+            'image_quality' => 90,
+            'preserve_styles' => true,
+            'dpi' => 300,
+            'page_width' => 0,
+            'page_height' => 0
         ], $options);
+
+        // Initialize mPDF for better style handling
+        $this->mpdf = new Mpdf([
+            'mode' => 'utf-8',
+            'format' => [$options['page_width'], $options['page_height']],
+            'dpi' => $options['dpi']
+        ]);
 
         $pdf = $this->parser->parseFile($pdfPath);
         $pages = $pdf->getPages();
         
-        $html = $this->getStylesIfEnabled();
-        $html .= sprintf('<div class="%s">', $this->config['css_classes']['container']);
+        $html = $this->generateHeader();
         
         foreach ($pages as $pageNumber => $page) {
             $html .= $this->convertPageToHtml($page, $pageNumber + 1, $options);
         }
         
-        $html .= '</div>';
+        $html .= $this->generateFooter();
         
         return new HtmlString($html);
     }
 
     /**
+     * Generate HTML header with styles
+     *
+     * @return string
+     */
+    private function generateHeader(): string
+    {
+        return '<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style type="text/css">
+                .pdf-container { width: 100%; max-width: 1200px; margin: 0 auto; }
+                .pdf-page { position: relative; margin-bottom: 20px; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+                .pdf-content { position: relative; }
+                .pdf-text { position: relative; z-index: 1; }
+                .pdf-image { max-width: 100%; height: auto; display: block; margin: 10px 0; }
+                .pdf-heading { font-weight: bold; margin: 1em 0; }
+                @media print {
+                    .pdf-page { box-shadow: none; margin: 0; page-break-after: always; }
+                }
+            </style>
+        </head>
+        <body>
+        <div class="pdf-container">';
+    }
+
+    /**
+     * Generate HTML footer
+     *
+     * @return string
+     */
+    private function generateFooter(): string
+    {
+        return '</div></body></html>';
+    }
+
+    /**
      * Convert a single page to HTML
      *
-     * @param \Smalot\PdfParser\Page $page
+     * @param Page $page
      * @param int $pageNumber
      * @param array $options
      * @return string
      */
-    private function convertPageToHtml($page, int $pageNumber, array $options): string
+    private function convertPageToHtml(Page $page, int $pageNumber, array $options): string
     {
-        $text = $page->getText();
-        $elements = $this->extractElements($text);
+        $pageDetails = $page->getDetails();
+        $pageWidth = $pageDetails['MediaBox'][2] ?? 595; // Default A4 width in points
+        $pageHeight = $pageDetails['MediaBox'][3] ?? 842; // Default A4 height in points
         
-        $html = sprintf('<div class="%s" data-page="%d">', 
-            $this->config['css_classes']['page'], 
+        $html = sprintf('<div class="pdf-page" style="width: %spx; min-height: %spx;" data-page="%d">', 
+            $pageWidth * 96/72, // Convert points to pixels
+            $pageHeight * 96/72,
             $pageNumber
         );
 
-        // Extract images if enabled
-        if ($options['extract_images']) {
-            $images = $this->extractImages($page, $pageNumber, $options['image_quality']);
-            $html .= $this->insertImages($images);
-        }
+        // Process text with styling
+        $html .= '<div class="pdf-content">';
+        $text = $page->getText();
         
-        foreach ($elements as $element) {
-            $html .= $this->formatElement($element);
-        }
-        
-        $html .= '</div>';
-        
-        return $html;
-    }
-
-    /**
-     * Extract images from PDF page
-     *
-     * @param \Smalot\PdfParser\Page $page
-     * @param int $pageNumber
-     * @param int $quality
-     * @return array
-     */
-    private function extractImages($page, int $pageNumber, int $quality): array
-    {
-        $images = [];
-        try {
-            // Create Imagick instance for the page
-            $imagick = new Imagick();
-            $imagick->setResolution(300, 300);
-            $imagick->readImage($page->getPath() . '[' . ($pageNumber - 1) . ']');
-            
-            // Convert to PNG for better quality
-            $imagick->setImageFormat('png');
-            $imagick->setImageCompressionQuality($quality);
-            
-            // Generate unique filename
-            $filename = sprintf('page_%d_%s.png', $pageNumber, uniqid());
-            $filepath = $this->imageStoragePath . '/' . $filename;
-            
-            // Save image
-            $imagick->writeImage($filepath);
-            $imagick->clear();
-            
-            $images[] = [
-                'path' => asset('storage/pdf-images/' . $filename),
-                'alt' => sprintf('Page %d Image', $pageNumber)
-            ];
-        } catch (\Exception $e) {
-            // Log error but continue processing
-            \Log::error('Failed to extract images from PDF: ' . $e->getMessage());
-        }
-        
-        return $images;
-    }
-
-    /**
-     * Insert extracted images into HTML
-     *
-     * @param array $images
-     * @return string
-     */
-    private function insertImages(array $images): string
-    {
-        $html = '';
-        foreach ($images as $image) {
-            $html .= sprintf(
-                '<img src="%s" alt="%s" class="%s">',
-                $image['path'],
-                $image['alt'],
-                $this->config['css_classes']['image']
-            );
-        }
-        return $html;
-    }
-
-    /**
-     * Extract elements from text
-     *
-     * @param string $text
-     * @return array
-     */
-    private function extractElements(string $text): array
-    {
-        // Remove multiple spaces and normalize line breaks
-        $text = preg_replace('/\s+/', ' ', $text);
+        // Split text into paragraphs
         $paragraphs = preg_split('/\n\s*\n/', $text);
+        foreach ($paragraphs as $paragraph) {
+            if (trim($paragraph)) {
+                $html .= sprintf('<p class="pdf-text">%s</p>', htmlspecialchars($paragraph));
+            }
+        }
         
-        return array_filter($paragraphs, 'trim');
+        $html .= '</div></div>';
+
+        return $html;
     }
 
     /**
-     * Format an element with appropriate HTML tags
+     * Extract styled elements from PDF page
      *
-     * @param string $text
-     * @return string
+     * @param Page $page
+     * @return array
      */
-    private function formatElement(string $text): string
+    private function extractStyledElements(Page $page): array
     {
-        $text = trim($text);
+        $elements = [];
+        $fonts = $page->getFonts();
         
-        // Detect if the text might be a heading
-        if (strlen($text) < 100 && preg_match('/^[A-Z0-9\s]{5,}$/', $text)) {
-            return sprintf('<h2 class="%s">%s</h2>', 
-                $this->config['css_classes']['heading'],
-                htmlspecialchars($text)
-            );
+        // Get text elements with their styles
+        $text = $page->getText();
+        $details = $page->getDetails();
+        
+        // Parse text into elements with positioning
+        preg_match_all('/\[(.*?)\]TJ/i', $details['text'] ?? '', $matches);
+        
+        foreach ($matches[1] as $index => $textContent) {
+            // Extract font details
+            $currentFont = null;
+            foreach ($fonts as $font) {
+                if (strpos($details['text'], $font->getName()) !== false) {
+                    $currentFont = $font;
+                    break;
+                }
+            }
+            
+            // Get text position
+            $position = $this->extractTextPosition($details, $index);
+            
+            $elements[] = [
+                'type' => 'text',
+                'content' => trim($textContent, '()'),
+                'style' => [
+                    'font' => $currentFont ? [
+                        'name' => $currentFont->getName(),
+                        'size' => $currentFont->getDetails()['FontSize'] ?? 12,
+                        'weight' => $this->getFontWeight($currentFont)
+                    ] : null,
+                    'color' => $this->extractColor($details['stroke_color'] ?? null),
+                    'position' => $position
+                ]
+            ];
         }
         
-        return sprintf('<p class="%s">%s</p>', 
-            $this->config['css_classes']['paragraph'],
-            htmlspecialchars($text)
+        return $elements;
+    }
+
+    /**
+     * Extract text position from PDF details
+     *
+     * @param array $details
+     * @param int $index
+     * @return array
+     */
+    private function extractTextPosition(array $details, int $index): array
+    {
+        $matrix = $details['TextMatrix'] ?? null;
+        if ($matrix) {
+            return [
+                'x' => $matrix[4] ?? 0,
+                'y' => $matrix[5] ?? 0
+            ];
+        }
+        
+        // Fallback positioning
+        return [
+            'x' => 0,
+            'y' => $index * 20 // Simple vertical stacking
+        ];
+    }
+
+    /**
+     * Get font weight based on font name
+     *
+     * @param Element $font
+     * @return string
+     */
+    private function getFontWeight($font): string
+    {
+        $name = strtolower($font->getName());
+        if (strpos($name, 'bold') !== false || strpos($name, 'black') !== false) {
+            return 'bold';
+        }
+        return 'normal';
+    }
+
+    /**
+     * Extract images from PDF page with enhanced quality
+     *
+     * @param Page $page
+     * @param int $pageNumber
+     * @param array $options
+     * @return array
+     */
+    private function extractImages(Page $page, int $pageNumber, array $options): array
+    {
+        // Image extraction disabled for now
+        return [];
+    }
+
+    /**
+     * Get image position from Imagick object
+     *
+     * @param Imagick $image
+     * @return array
+     */
+    private function getImagePosition(Imagick $image): array
+    {
+        $geometry = $image->getImageGeometry();
+        return [
+            'x' => $geometry['x'] ?? 0,
+            'y' => $geometry['y'] ?? 0,
+            'width' => $geometry['width'] ?? 0,
+            'height' => $geometry['height'] ?? 0
+        ];
+    }
+
+    /**
+     * Insert an image into HTML with positioning
+     *
+     * @param array $image
+     * @return string
+     */
+    private function insertImage(array $image): string
+    {
+        $style = sprintf(
+            'position: absolute; left: %spx; top: %spx; width: %spx; height: %spx;',
+            $image['position']['x'],
+            $image['position']['y'],
+            $image['position']['width'],
+            $image['position']['height']
+        );
+
+        return sprintf(
+            '<img src="%s" alt="%s" class="pdf-image" style="%s">',
+            $image['path'],
+            $image['alt'],
+            $style
         );
     }
 
     /**
-     * Get default responsive styles if enabled
+     * Extract color information
      *
+     * @param mixed $color
      * @return string
      */
-    private function getStylesIfEnabled(): string
+    private function extractColor($color): string
     {
-        if (!($this->config['output']['include_styles'] ?? false)) {
-            return '';
+        if (!$color) {
+            return '#000000';
         }
 
-        return <<<HTML
-        <style>
-            .{$this->config['css_classes']['container']} {
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            }
-            
-            .{$this->config['css_classes']['page']} {
-                margin-bottom: 30px;
-                background: #fff;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            
-            .{$this->config['css_classes']['heading']} {
-                font-size: 24px;
-                color: #2c3e50;
-                margin: 20px 0;
-                line-height: 1.3;
-            }
-            
-            .{$this->config['css_classes']['paragraph']} {
-                font-size: 16px;
-                line-height: 1.6;
-                color: #34495e;
-                margin: 16px 0;
-            }
-            
-            .{$this->config['css_classes']['image']} {
-                max-width: 100%;
-                height: auto;
-                display: block;
-                margin: 20px auto;
-                border-radius: 4px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-            
-            /* Responsive Breakpoints */
-            @media (max-width: {$this->config['breakpoints']['mobile']}px) {
-                .{$this->config['css_classes']['container']} {
-                    padding: 10px;
-                }
-                
-                .{$this->config['css_classes']['page']} {
-                    padding: 15px;
-                    margin-bottom: 20px;
-                }
-                
-                .{$this->config['css_classes']['heading']} {
-                    font-size: 20px;
-                }
-                
-                .{$this->config['css_classes']['paragraph']} {
-                    font-size: 14px;
-                }
-            }
-            
-            @media (min-width: {$this->config['breakpoints']['mobile']}px) and (max-width: {$this->config['breakpoints']['tablet']}px) {
-                .{$this->config['css_classes']['container']} {
-                    padding: 15px;
-                }
-            }
-            
-            @media print {
-                .{$this->config['css_classes']['container']} {
-                    max-width: none;
-                    padding: 0;
-                }
-                
-                .{$this->config['css_classes']['page']} {
-                    box-shadow: none;
-                    padding: 0;
-                    margin-bottom: 20px;
-                }
-                
-                .{$this->config['css_classes']['image']} {
-                    max-width: 90%;
-                    box-shadow: none;
-                }
-            }
-        </style>
-        HTML;
+        if (is_array($color)) {
+            // Convert RGB array to hex
+            return sprintf('#%02x%02x%02x',
+                (int)($color[0] * 255),
+                (int)($color[1] * 255),
+                (int)($color[2] * 255)
+            );
+        }
+
+        return $color;
+    }
+
+    /**
+     * Format a styled element
+     *
+     * @param array $element
+     * @return string
+     */
+    private function formatStyledElement(array $element): string
+    {
+        $style = $element['style'];
+        $styleString = sprintf(
+            'style="font-family: %s; font-size: %spx; color: %s; position: absolute; left: %spx; top: %spx;"',
+            $style['font']['name'] ?? 'Arial',
+            $style['font']['size'] ?? 12,
+            $style['color'],
+            $style['position']['x'],
+            $style['position']['y']
+        );
+
+        if ($this->isHeading($element)) {
+            return sprintf('<h2 class="pdf-heading" %s>%s</h2>', 
+                $styleString, 
+                htmlspecialchars($element['content'])
+            );
+        }
+
+        return sprintf('<p class="pdf-text" %s>%s</p>', 
+            $styleString, 
+            htmlspecialchars($element['content'])
+        );
+    }
+
+    /**
+     * Determine if an element is a heading
+     *
+     * @param array $element
+     * @return bool
+     */
+    private function isHeading(array $element): bool
+    {
+        $content = $element['content'];
+        $style = $element['style'];
+        
+        return (
+            strlen($content) < 100 &&
+            preg_match('/^[A-Z0-9\s]{5,}$/', $content) &&
+            ($style['font']['size'] > 14 || $style['font']['weight'] === 'bold')
+        );
     }
 } 
