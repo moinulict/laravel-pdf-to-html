@@ -254,15 +254,26 @@ class PdfToHtmlConverter
     /**
      * Get font weight based on font name
      *
-     * @param Element $font
+     * @param mixed $font
      * @return string
      */
     private function getFontWeight($font): string
     {
-        $name = strtolower($font->getName());
-        if (strpos($name, 'bold') !== false || strpos($name, 'black') !== false) {
-            return 'bold';
+        if (!$font) {
+            return 'normal';
         }
+
+        try {
+            $details = $font->getDetails();
+            $name = strtolower($details['Name'] ?? '');
+            
+            if (strpos($name, 'bold') !== false || strpos($name, 'black') !== false) {
+                return 'bold';
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to get font weight: ' . $e->getMessage());
+        }
+        
         return 'normal';
     }
 
