@@ -1,5 +1,6 @@
 {
     "name": "moinul/laravel-pdf-to-html",
+    "version": "1.2.6",
     "description": "A Laravel package for converting PDF files to HTML, with support for text extraction, image extraction, and styling preservation. Features include PDF to HTML conversion, image extraction, CDN-hosted PDF support, and more.",
     "type": "library",
     "license": "MIT",
