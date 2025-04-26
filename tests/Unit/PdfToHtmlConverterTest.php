@@ -2,87 +2,185 @@
 
 namespace Moinul\LaravelPdfToHtml\Tests\Unit;
 
+use Moinul\LaravelPdfToHtml\Services\PdfToHtmlConverter;
 use Orchestra\Testbench\TestCase;
-use Illuminate\Foundation\Testing\WithFaker;
 use Illuminate\Support\Facades\Storage;
-use Moinul\LaravelPdfToHtml\PdfToHtmlConverter;
+use Illuminate\Support\Facades\Config;
+use InvalidArgumentException;
+use TCPDF;
+use Illuminate\Support\HtmlString;
 use Moinul\LaravelPdfToHtml\PdfToHtmlServiceProvider;
-use FPDF;
 
+/**
+ * @internal
+ */
 class PdfToHtmlConverterTest extends TestCase
 {
-    use WithFaker;
-
     private PdfToHtmlConverter $converter;
-    private string $testPdfPath;
-    private string $testImagePath;
+    private string $samplePdfPath;
 
     protected function setUp(): void
     {
         parent::setUp();
         
-        // Create storage disk for testing
-        Storage::fake('local');
-        
+        // Create the converter instance
         $this->converter = new PdfToHtmlConverter();
-        $this->testPdfPath = storage_path('app/test.pdf');
-        $this->testImagePath = storage_path('app/test-image.jpg');
         
-        // Create test files
-        $this->createTestPdf();
-        $this->createTestImage();
+        // Create a sample PDF for testing
+        $this->samplePdfPath = $this->createSamplePdf();
+        
+        // Mock storage configuration
+        Storage::fake('public');
+        
+        // Set up configuration
+        Config::set('pdf-to-html', [
+            'storage_path' => 'pdf-images',
+            'public_path' => 'storage/pdf-images',
+        ]);
     }
 
     protected function tearDown(): void
     {
-        // Clean up test files
-        if (file_exists($this->testPdfPath)) {
-            unlink($this->testPdfPath);
-        }
-        if (file_exists($this->testImagePath)) {
-            unlink($this->testImagePath);
+        // Clean up the sample PDF
+        if (file_exists($this->samplePdfPath)) {
+            unlink($this->samplePdfPath);
         }
         
         parent::tearDown();
     }
 
-    protected function getPackageProviders($app)
+    /** 
+     * @test 
+     * @covers \Moinul\LaravelPdfToHtml\Services\PdfToHtmlConverter::convert
+     */
+    public function it_can_convert_pdf_to_html(): void
     {
-        return [PdfToHtmlServiceProvider::class];
+        // Convert the sample PDF to HTML
+        $html = $this->converter->convert($this->samplePdfPath);
+
+        // Assert the result is an HtmlString
+        $this->assertInstanceOf(HtmlString::class, $html);
+        
+        // Assert the HTML contains expected structure
+        $this->assertStringContainsString('<!DOCTYPE html>', $html->toHtml());
+        $this->assertStringContainsString('<div class="pdf-container">', $html->toHtml());
+        $this->assertStringContainsString('<div class="pdf-page"', $html->toHtml());
     }
 
-    /** @test */
-    public function it_throws_exception_for_non_existent_file()
+    /** 
+     * @test 
+     * @covers \Moinul\LaravelPdfToHtml\Services\PdfToHtmlConverter::convert
+     */
+    public function it_throws_exception_for_non_existent_pdf(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('PDF file not found at path:');
+
         $this->converter->convert('non-existent.pdf');
     }
 
-    /** @test */
-    public function it_converts_simple_pdf_to_html()
+    /** 
+     * @test 
+     * @covers \Moinul\LaravelPdfToHtml\Services\PdfToHtmlConverter::convert
+     */
+    public function it_handles_empty_pdf(): void
     {
-        $html = $this->converter->convert($this->testPdfPath);
-        $this->assertStringContainsString('<html', $html);
-        $this->assertStringContainsString('</html>', $html);
-        $this->assertStringContainsString('Test PDF Content', $html);
+        // Create an empty PDF
+        $emptyPdfPath = $this->createEmptyPdf();
+
+        // Convert the empty PDF
+        $html = $this->converter->convert($emptyPdfPath);
+
+        // Assert basic structure is present
+        $this->assertStringContainsString('<!DOCTYPE html>', $html->toHtml());
+        $this->assertStringContainsString('<div class="pdf-container">', $html->toHtml());
+
+        // Clean up
+        unlink($emptyPdfPath);
     }
 
-    private function createTestPdf(): void
+    /** 
+     * @test 
+     * @covers \Moinul\LaravelPdfToHtml\Services\PdfToHtmlConverter::convert
+     */
+    public function it_preserves_text_formatting(): void
     {
-        $pdf = new FPDF();
+        $html = $this->converter->convert($this->samplePdfPath);
+        
+        // Assert text content is wrapped in appropriate div
+        $this->assertStringContainsString('<div class="pdf-text">', $html->toHtml());
+        
+        // Assert sample content is present
+        $this->assertStringContainsString('Sample PDF Content', $html->toHtml());
+        $this->assertStringContainsString('Second line of text', $html->toHtml());
+    }
+
+    /** 
+     * @test 
+     * @covers \Moinul\LaravelPdfToHtml\Services\PdfToHtmlConverter::convert
+     */
+    public function it_handles_custom_options(): void
+    {
+        $options = [
+            'extract_images' => false,
+            'image_quality' => 75,
+            'preserve_styles' => false,
+            'dpi' => 150
+        ];
+
+        $html = $this->converter->convert($this->samplePdfPath, $options);
+        
+        // Assert the conversion completed successfully
+        $this->assertInstanceOf(HtmlString::class, $html);
+    }
+
+    /**
+     * Create a sample PDF file for testing
+     *
+     * @return string Path to the created PDF file
+     */
+    private function createSamplePdf(): string
+    {
+        /** @var TCPDF $pdf */
+        $pdf = new TCPDF();
         $pdf->AddPage();
-        $pdf->SetFont('Arial', 'B', 16);
-        $pdf->Cell(40, 10, 'Test PDF Content');
-        $pdf->Output('F', $this->testPdfPath);
+        $pdf->SetFont('helvetica', '', 12);
+        $pdf->Cell(0, 10, 'Sample PDF Content', 0, 1);
+        $pdf->Cell(0, 10, 'Second line of text', 0, 1);
+        
+        $path = sys_get_temp_dir() . '/test.pdf';
+        $pdf->Output($path, 'F');
+        
+        return $path;
     }
 
-    private function createTestImage(): void
+    /**
+     * Create an empty PDF file for testing
+     *
+     * @return string Path to the created PDF file
+     */
+    private function createEmptyPdf(): string
     {
-        // Create a simple test image
-        $image = imagecreatetruecolor(100, 100);
-        $bgColor = imagecolorallocate($image, 255, 255, 255);
-        imagefill($image, 0, 0, $bgColor);
-        imagejpeg($image, $this->testImagePath);
-        imagedestroy($image);
+        /** @var TCPDF $pdf */
+        $pdf = new TCPDF();
+        $pdf->AddPage();
+        
+        $path = sys_get_temp_dir() . '/empty.pdf';
+        $pdf->Output($path, 'F');
+        
+        return $path;
+    }
+
+    /**
+     * Get package providers
+     *
+     * @param \Illuminate\Foundation\Application $app
+     * @return array<int, string>
+     */
+    protected function getPackageProviders($app): array
+    {
+        return [
+            PdfToHtmlServiceProvider::class
+        ];
     }
 } 
