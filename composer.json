@@ -1,9 +1,9 @@
 {
     "name": "moinul/laravel-pdf-to-html",
-    "description": "A Laravel package that converts PDF files to HTML format with ease, supporting image extraction and CDN-hosted PDFs.",
+    "description": "A Laravel package for converting PDF files to HTML, with support for text extraction, image extraction, and styling preservation. Features include PDF to HTML conversion, image extraction, CDN-hosted PDF support, and more.",
     "type": "library",
     "license": "MIT",
-    "version": "v1.2.0",
+    "version": "1.2.1",
     "keywords": [
         "laravel",
         "pdf",
@@ -11,7 +11,7 @@
         "converter",
         "pdf-to-html",
         "image-extraction",
-        "cdn"
+        "text-extraction"
     ],
     "autoload": {
         "psr-4": {
@@ -20,12 +20,12 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Moinul\\LaravelPdfToHtml\\Tests\\": "tests/"
+            "Moinul\\LaravelPdfToHtml\\Tests\\": "tests"
         }
     },
     "authors": [
         {
-            "name": "Moinul",
+            "name": "Moinul Islam",
             "email": "engrminul@gmail.com"
         }
     ],
@@ -34,15 +34,15 @@
         "ext-imagick": "*",
         "illuminate/support": "^7.0|^8.0|^9.0|^10.0|^11.0",
         "setasign/fpdf": "^1.8",
-        "smalot/pdfparser": "^2.8",
+        "smalot/pdfparser": "^2.0",
         "tecnickcom/tcpdf": "^6.6",
         "mpdf/mpdf": "^8.2",
         "dompdf/dompdf": "^2.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^8.0|^9.0|^11.0",
-        "orchestra/testbench": "^5.0|^6.0|^7.0|^8.0|^9.0",
-        "mockery/mockery": "^1.3|^1.4|^1.6"
+        "phpunit/phpunit": "^11.0.1",
+        "orchestra/testbench": "^9.0",
+        "mockery/mockery": "^1.6"
     },
     "extra": {
         "laravel": {
